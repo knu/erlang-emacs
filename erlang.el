@@ -988,7 +988,7 @@ behaviour.")
    (list (concat "^\\(-" erlang-atom-regexp "\\)\\(\\s-\\|\\.\\|(\\)")	 
 	 1 (if (boundp 'font-lock-preprocessor-face)
 	       'font-lock-preprocessor-face
-	     'font-lock-function-name-face)))
+	     'font-lock-constant-face)))
   "Font lock keyword highlighting attributes.")
 
 (defvar erlang-font-lock-keywords-quotes
@@ -1019,10 +1019,12 @@ are highlighted by syntactic analysis.")
   (list
    (list (concat "?\\s-*\\(" erlang-atom-regexp
 		 "\\|" erlang-variable-regexp "\\)")
-	 1 'font-lock-type-face)
+	 1 'font-lock-constant-face)
    (list (concat "^\\(-\\(?:define\\|ifn?def\\)\\)\\s-*(\\s-*\\(" erlang-atom-regexp
 		 "\\|" erlang-variable-regexp "\\)")
-	 (list 1 'font-lock-preprocessor-face t)
+	 (if (boundp 'font-lock-preprocessor-face)
+	     (list 1 'font-lock-preprocessor-face t)
+	   (list 1 'font-lock-constant-face t))
 	 (list 3 'font-lock-type-face t t))
    (list "^-e\\(lse\\|ndif\\)\\>" 0 'font-lock-preprocessor-face t))
   "Font lock keyword highlighting macros.
@@ -2653,7 +2655,8 @@ Value is list (stack token-start token-type in-what)."
       (cond ((eq (car (car stack)) '\()
 	     (erlang-pop stack)
 	     (if (and (eq (car (car stack)) 'fun) 
-		      (eq (car (car (cdr stack))) '::))
+		      (or (eq (car (car (last stack))) 'spec)
+			  (eq (car (car (cdr stack))) '::))) ;; -type()
 		 ;; Inside fun type def ') closes fun definition
 		 (erlang-pop stack)))
 	    ((eq (car (car stack)) 'icr)
@@ -2874,8 +2877,8 @@ Return nil if inside string, t if in a comment."
 	 (+ base erlang-indent-level))
 	(t
 	 (goto-char indent-point)
-	 (cond ((memq (following-char) '(?\( ?{))
-		;; Function application or record.
+	 (cond ((memq (following-char) '(?\( ))
+		;; Function application.
 		(+ (erlang-indent-find-preceding-expr)
 		   erlang-argument-indent))
 	       ;; Empty line, or end; treat it as the end of
@@ -3472,8 +3475,8 @@ Normally used in conjunction with `erlang-beginning-of-clause', e.g.:
 		     (erlang-get-function-arrow)))"
   (and 
    (save-excursion
-     (re-search-forward "[^-:]*-\\|:" (point-max) t)
-     (erlang-buffer-substring (- (point) 1) (+ (point) 1)))))
+     (re-search-forward "->" (point-max) t)
+     (erlang-buffer-substring (- (point) 2) (+ (point) 1)))))
 
 (defun erlang-get-function-arity ()
   "Return the number of arguments of function at point, or nil."
@@ -3677,6 +3680,7 @@ non-whitespace characters following the point on the current line."
       (setq erlang-electric-newline-inhibit nil)
     (setq erlang-electric-newline-inhibit t)
     (undo-boundary)
+    (erlang-indent-line)
     (end-of-line)
     (newline)
     (if (condition-case nil
